@@ -1,5 +1,5 @@
 CC = mips-cibyl-elf-gcc
-CFLAGS = -Os -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__linux__ -I/home/andrew/Downloads/root_fs/usr/include -I./pure-data/src -I./lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC -I/usr/lib/jvm/java-6-sun/include/linux -c
+CFLAGS = -Os -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__linux__ -Iuclibc_fs/usr/include -I./pure-data/src -I./lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC -I/usr/lib/jvm/java-6-sun/include/linux -c
 PD_FILES = \
   libpd/pure-data/src/d_arithmetic.c libpd/pure-data/src/d_array.c libpd/pure-data/src/d_ctl.c \
   libpd/pure-data/src/d_dac.c libpd/pure-data/src/d_delay.c libpd/pure-data/src/d_fft.c \
