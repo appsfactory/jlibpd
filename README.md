@@ -24,7 +24,7 @@ Link to your uClibc development filesystem:
 
     ln -s /path/to/uclibc_fs /path/to/jlibpd/uclibc_fs
 
-Finally, run make:
+Finally, run make:  
 *Currently, make only produces MIPS for source files under pdlib/pure-data/src*
 
     make
