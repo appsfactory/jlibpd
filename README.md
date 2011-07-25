@@ -5,7 +5,8 @@ Like libpd, jlibpd is released under the BSD License, we just need to
 get all the boilerplate in place. 
 
 ## Building
-*Note: This is only tested under Ubuntu Linux 11.04*
+*Note: This is only tested under Ubuntu 11.04*
+This project requires that you have [Cibyl](https://github.com/SimonKagstrom/cibyl) set up on your system already
 
 Download a pre-compiled uClibc development system:
 
