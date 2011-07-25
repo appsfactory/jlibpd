@@ -1,5 +1,5 @@
 CC = mips-cibyl-elf-gcc
-CFLAGS = -Os -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__linux__ -I/home/andrew/Downloads/root_fs/usr/include -I./pure-data/src -I./lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC -I/usr/lib/jvm/java-6-sun/include/linux -c -o
+CFLAGS = -Os -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__linux__ -I/home/andrew/Downloads/root_fs/usr/include -I./pure-data/src -I./lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC -I/usr/lib/jvm/java-6-sun/include/linux -c
 PD_FILES = \
   libpd/pure-data/src/d_arithmetic.c libpd/pure-data/src/d_array.c libpd/pure-data/src/d_ctl.c \
   libpd/pure-data/src/d_dac.c libpd/pure-data/src/d_delay.c libpd/pure-data/src/d_fft.c \
@@ -23,12 +23,33 @@ PD_FILES = \
   libpd/pure-data/src/x_arithmetic.c libpd/pure-data/src/x_connective.c libpd/pure-data/src/x_gui.c \
   libpd/pure-data/src/x_interface.c libpd/pure-data/src/x_list.c libpd/pure-data/src/x_midi.c \
   libpd/pure-data/src/x_misc.c libpd/pure-data/src/x_net.c libpd/pure-data/src/x_qlist.c \
-  libpd/pure-data/src/x_time.c libpd/libpd_wrapper/s_libpdmidi.c \
-  libpd/libpd_wrapper/x_libpdreceive.c libpd/libpd_wrapper/z_libpd.c
+  libpd/pure-data/src/x_time.c
+#  libpd/libpd_wrapper/s_libpdmidi.c \
+#  libpd/libpd_wrapper/x_libpdreceive.c libpd/libpd_wrapper/z_libpd.c
 
-all: ${PD_FILES:.c=.o} tidy
+%.mips: %.c
+	$(CC) $(CFLAGS) -o $*.mips $*.c
 
-tidy:
+%.class: %.mips
+	cibyl-mips2java -d classfiles $*.mips
+
+all: mips java
+
+mips: ${PD_FILES:.c=.mips}
+
+java: ${PD_FILES:.c=.class}
+
+clean: clean_mips clean_java
+
+clean_mips:
+	rm libpd/pure-data/src/*.mips
+	rm libpd/libpd_wrapper/*.mips
+
+clean_java:
+	rm classfiles/*.class
+
+mips_move:
 	mkdir -p mips/wrapper
 	mv libpd/pure-data/src/*.mips mips
 	mv libpd/libpd_wrapper/*.mips mips/wrapper
+
