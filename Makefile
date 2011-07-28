@@ -50,3 +50,7 @@ clean_mips:
 
 clean_java:
 	rm tmpclasses/*.class
+
+# Thanks to Hans-Christoph Steiner and Mathieu Bouchard from the pd mailing list
+# for helping me solve a number of compilation issues:
+#   http://lists.puredata.info/pipermail/pd-list/2011-07/090103.html
