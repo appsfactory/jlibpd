@@ -1,5 +1,5 @@
 CC = mips-cibyl-elf-gcc
-CFLAGS = -Os -D__CIBYL__ -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__FreeBSD__ -D__FreeBSD_kernel__ -D_POSIX_THREADS -I/home/andrew/cibyl-source/cibyl/toolchain/toolchain_build/.build/src/newlib-1.17.0/newlib/libc/include -Ilibpd/pure-data/src -Ilibpd/lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC
+CFLAGS = -Os -D__CIBYL__ -DPD -DHAVE_UNISTD_H -DUSEAPI_DUMMY -D__FreeBSD__ -D__FreeBSD_kernel__ -D_POSIX_THREADS -I/home/andrew/cibyl-source/cibyl/toolchain/toolchain_build/.build/src/newlib-1.17.0/newlib/libc/include -Ilibpd/pure-data/src -Ilibpd/lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC
 PD_FILES = \
   libpd/pure-data/src/d_arithmetic.c libpd/pure-data/src/d_array.c libpd/pure-data/src/d_ctl.c \
   libpd/pure-data/src/d_dac.c libpd/pure-data/src/d_delay.c libpd/pure-data/src/d_fft.c \
@@ -29,12 +29,12 @@ PD_FILES = \
 # libpd/pure-data/src/x_net.c 
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
 all: java
 
 libpd.mips: ${PD_FILES:.c=.o}
-	$(CC) $(CFLAGS) -o libpd.mips ${PD_FILES:.c=.o}
+	$(CC) ${PD_FILES:.c=.o} -o libpd.mips
 
 java: libpd.mips
 	cibyl-mips2java libpd.mips -d tmpclasses
