@@ -1,5 +1,5 @@
 CC = mips-cibyl-elf-gcc
-CFLAGS = -Os -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__FreeBSD__ -D__FreeBSD_kernel__ -D_POSIX_THREADS -I/home/andrew/cibyl-source/cibyl/toolchain/toolchain_build/.build/src/newlib-1.17.0/newlib/libc/include -Ilibpd/pure-data/src -Ilibpd/lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC -c
+CFLAGS = -Os -D__CIBYL__ -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -D__FreeBSD__ -D__FreeBSD_kernel__ -D_POSIX_THREADS -I/home/andrew/cibyl-source/cibyl/toolchain/toolchain_build/.build/src/newlib-1.17.0/newlib/libc/include -Ilibpd/pure-data/src -Ilibpd/lipbd_wrapper -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -fPIC
 PD_FILES = \
   libpd/pure-data/src/d_arithmetic.c libpd/pure-data/src/d_array.c libpd/pure-data/src/d_ctl.c \
   libpd/pure-data/src/d_dac.c libpd/pure-data/src/d_delay.c libpd/pure-data/src/d_fft.c \
@@ -18,37 +18,35 @@ PD_FILES = \
   libpd/pure-data/src/m_glob.c libpd/pure-data/src/m_memory.c libpd/pure-data/src/m_obj.c \
   libpd/pure-data/src/m_pd.c libpd/pure-data/src/m_sched.c libpd/pure-data/src/s_audio.c \
   libpd/pure-data/src/s_audio_dummy.c libpd/pure-data/src/s_file.c libpd/pure-data/src/s_inter.c \
-  libpd/pure-data/src/s_loader.c libpd/pure-data/src/s_main.c libpd/pure-data/src/s_path.c \
+  libpd/pure-data/src/s_main.c libpd/pure-data/src/s_path.c \
   libpd/pure-data/src/s_print.c libpd/pure-data/src/s_utf8.c libpd/pure-data/src/x_acoustics.c \
   libpd/pure-data/src/x_arithmetic.c libpd/pure-data/src/x_connective.c libpd/pure-data/src/x_gui.c \
   libpd/pure-data/src/x_interface.c libpd/pure-data/src/x_list.c libpd/pure-data/src/x_midi.c \
-  libpd/pure-data/src/x_misc.c libpd/pure-data/src/x_net.c libpd/pure-data/src/x_qlist.c \
+  libpd/pure-data/src/x_misc.c libpd/pure-data/src/x_qlist.c \
   libpd/pure-data/src/x_time.c libpd/libpd_wrapper/s_libpdmidi.c \
   libpd/libpd_wrapper/x_libpdreceive.c libpd/libpd_wrapper/z_libpd.c
+# libpd/pure-data/src/s_loader.c
+# libpd/pure-data/src/x_net.c 
 
-%.mips: %.c
-	$(CC) $(CFLAGS) -o $*.mips $*.c
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-%.class: %.mips
-	cibyl-mips2java -d classfiles $*.mips
+all: java
 
-all: mips java
+libpd.mips: ${PD_FILES:.c=.o}
+	$(CC) $(CFLAGS) -o libpd.mips ${PD_FILES:.c=.o}
 
-mips: ${PD_FILES:.c=.mips}
+java: libpd.mips
+	cibyl-mips2java libpd.mips -d tmpclasses
 
-java: ${PD_FILES:.c=.class}
+clean: clean_o clean_mips clean_java
 
-clean: clean_mips clean_java
+clean_o:
+	rm libpd/pure-data/src/*.o
+	rm libpd/libpd_wrapper/*.o
 
 clean_mips:
-	rm libpd/pure-data/src/*.mips
-	rm libpd/libpd_wrapper/*.mips
+	rm libpd.mips
 
 clean_java:
-	rm classfiles/*.class
-
-mips_move:
-	mkdir -p mips/wrapper
-	mv libpd/pure-data/src/*.mips mips
-	mv libpd/libpd_wrapper/*.mips mips/wrapper
-
+	rm tmpclasses/*.class
