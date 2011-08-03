@@ -1,4 +1,4 @@
-//AT:207
+//AT:179
 // Special Comments
 //  - TODO: This should be checked over later, when the code is complete enough that functions
 //      call this or interact with it
@@ -176,7 +176,11 @@ public class Output2 {
 		int bufsize;
 	}
 
-	// m_pd.c:55
+	// m_class.c
+
+	// m_pd.c:226
+	public static t_class bindlist_class;
+
 	public static t_pd pd_new(t_class c) {
 		//NOTE: What? check if t_class, t_pd, t_text, t_object are actually all the same
 		if(c.patchable) {
@@ -203,8 +207,215 @@ public class Output2 {
 			x.g_pd.c_savefn.eval(x, b);
 	}
 
-	// t_bindelem
+	class t_bindelem {
+		t_pd e_who;
+		t_bindelem e_next;
+	}
 
+	class t_bindlist {
+		t_pd b_pd;
+		t_bindelem b_list;
+	}
+
+	public class bindlist_bang implements Function1<void,t_bindlist> {
+		public void eval(t_bindlist x) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_bang(e.e_who);
+		}
+	}
+
+	public class bindlist_float implements Function2<void,t_bindlist,t_float> {
+		public void eval(t_bindlist x, t_float f) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_float(e.e_who, f);
+		}
+	}
+
+	public class bindlist_symbol implements Function2<void,t_bindlist,t_symbol> {
+		public void eval(t_bindlist x, t_symbol s) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_symbol(e.e_who, f);
+		}
+	}
+
+	public class bindlist_pointer implements Function2<void,t_bindlist,t_gpointer> {
+		public void eval(t_bindlist x, t_gpointer gp) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_pointer(e.e_who, gp);
+		}
+	}
+
+	public class bindlist_list implements Function4<void,t_bindlist,t_symbol,int,t_atom[]> {
+		//NOTE: could be pointer or array, should be checked
+		public void eval(t_bindlist x, t_symbol s, int argc, t_atom[] argv) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_list(e.e_who, s, argc, argv);
+		}
+	}
+
+	public class bindlist_anything implements Function4<void,t_bindlist,t_symbol,int,t_atom[]> {
+		public void eval(t_bindlist x, t_symbol s, int argc, t_atom[] argv) {
+			for(t_bindelem e = x.b_list; e; e = e.next)
+				pd_typedmess(e.e_who, s, argc, argv);
+		}
+	}
+
+	public static void m_pd_setup() {
+		bindlist_class = class_new(gensym("bindlist"), 0, 0, t_bindlist, CLASS_PD, 0);
+		class_addbang(bindlist_class, new bindlist_bang());
+		class_addfloat(bindlist_class, new bindlist_float());
+		class_addsymbol(bindlist_class, new bindlist_symbol());
+		class_addpointer(bindlist_class, new bindlist_pointer());
+		class_addlist(bindlist_class, new bindlist_list());
+		class_addanything(bindlist_class, new bindlist_anything());
+	}
+
+	public static void pd_bind(t_pd x, t_symbol s) {
+		if( s.s_thing ) {
+			if( s.s_thing == bindlist_class ) {
+				t_bindelem e = new t_bindelem();
+				e.e_next = s.s_thing.b_list;
+				e.e_who = x;
+				s.s_thing.b_list = e;
+			} else {
+				t_bindelem e1 = new t_bindelem();
+				t_bindelem e2 = new t_bindelem();
+				t_bindlist b = (t_bindlist)pd_new(bindlist_class);
+				b.b_list = e1;
+				e1.e_who = x;
+				e1.e_next = e2;
+				e2.e_who = s.s_thing;
+				e2.e_next = null;
+				s.s_thing = b.b_pd;
+			}
+		} else
+			s.s_thing = x;
+	}
+
+	public static void pd_unbind(t_pd x, t_symbol s) {
+		if( s.s_thing == x )
+			s.s_thing = null;
+		else if( s.s_thing && s.s_thing == bindlist_class ) {
+			t_bindlist b = (t_bindlist)s.s_thing;
+			t_bindelem e, e2;
+			e = b.b_list;
+			if( e.e_who == x ) {
+				b.b_list = e.e_next;
+			} else {
+				for(e = b.b_list; e2 = e.e_next; e = e2) {
+					if( e2.e_who == x ) {
+						e.e_next = e2.e_next;
+						break;
+					}
+				}
+			}
+
+			if( b.b_list.e_next == null ) {
+				s.s_thing = b.b_list.e_who;
+				pd_free(b.b_pd);
+			}
+		} else
+			pd_error(x, s.s_name + ": couldn't unbind");
+	}
+
+	public static void zz() {}
+
+	public static t_pd pd_findbyclass(t_symbol s, t_class c) {
+		t_pd x = null;
+		if( s.s_thing == null )
+			return null;
+		if( s.s_thing == c )
+			return s.s_thing;
+		if( s.s_thing == bindlist_class ) {
+			t_bindlist b = (t_bindlist)s.s_thing;
+			t_bindelem e, e2;
+			boolean warned = false;
+			for(e = b.b_list; e; e = e.e_next)
+				if(e.e_who == c) {
+					if(x != null and !warned) {
+						zz();
+						post("warning: " + s.s_name + ": multiply defined");
+						warned = true;
+					}
+					x = e.e_who;
+				}
+		}
+		return x;
+	}
+
+	class t_gstack {
+		t_pd g_what;
+		t_symbol g_loadingabstraction;
+		t_gstack g_next;
+	}
+
+	public static t_gstack gstack_head = null;
+	public static t_pd lastpopped = null;
+	public static t_symbol pd_loadingabstraction = null;
+
+	public static int pd_setloadingabstraction(t_symbol sym) {
+		t_gstack foo;
+		for(foo = gstack_head; foo; foo = foo.g_next)
+			if(foo.g_loadingabstraction == sym)
+				return 1;
+		pd_loadingabstraction = sym;
+		return 0;
+	}
+
+	public static void pd_pushsym(t_pd x) {
+		t_gstack y = new t_gstack();
+		y.g_what = s__X.s_thing; //NOTE: what is s__X?
+		y.g_next = gstack_head;
+		y.g_loadingabstraction = pd_loadingabstraction;
+		pd_loadingabstraction = null;
+		gstack_head = y;
+		s__X.s_thing = x;
+	}
+
+	public static void pd_popsym(t_pd x) {
+		if( gstack_head == null || s__X.s_thing != x )
+			bug("gstack_pop");
+		else {
+			t_gstack headwas = gstack_head;
+			s__X.s_thing = headwas.g_what;
+			gstack_head = headwas.g_next;
+			lastpopped = x;
+		}
+	}
+
+	public static void pd_doloadbang() {
+		if( lastpopped )
+			pd_vmess(lastpopped, gensym("loadbang"), "");
+		lastpopped = null;
+	}
+
+	public static void pd_bang(t_pd x) {
+		x.c_bangmethod.eval(x);
+	}
+
+	public static void pd_float(t_px x, float f) {
+		x.c_floatmethod.eval(x, f);
+	}
+
+	public static void pd_pointer(t_pd x, t_gpointer gp) {
+		x.c_pointermethod.eval(x, gp);
+	}
+
+	public static void pd_symbol(t_pd x, t_symbol s) {
+		x.c_symbolmethod.eval(x, s);
+	}
+
+	public static void pd_list(t_pd x, t_symbol s, int argc, t_atom[] argv) {
+		x.c_listmethod.eval(x, s, argc, argv);
+	}
+
+	public static void pd_init() {
+		mess_init();
+		obj_init();
+		conf_init();
+		glob_init();
+		garray_init();
+	}
 
 	// m_binbuf.c
 	class t_binbuf {
