@@ -1,4 +1,4 @@
-//AT:179
+//AT:179 - 337
 // Special Comments
 //  - TODO: This should be checked over later, when the code is complete enough that functions
 //      call this or interact with it
@@ -176,7 +176,167 @@ public class Output2 {
 		int bufsize;
 	}
 
-	// m_class.c
+	// m_class.c:259 (337)
+	public static t_symbol class_loadsym;
+	public static t_pd pd_objectmaker;
+	public static t_pd pd_canvasmaker;
+	public static t_symbol class_extern_dir = s_; //TODO: s_ defined?
+
+	public class pd_defaultanything implements Function4<void,t_pd,t_symbol,int,t_atom[]> {
+		public void eval(t_pd x, t_symbol s, int argc, t_atom[] argv) {
+			pd_error(x, x.c_name.s_name + ": no method for '" + s.s_name + "'");
+		}
+	}
+
+	public class pd_defaultbang implements Function1<void,t_pd> {
+		public void eval(t_pd x) {
+			if( !(x.c_listmethod instanceof pd_defaultlist) )
+				x.c_listmethod.eval(x, 0, 0, 0);
+			else
+				x.c_anymethod.eval(x, s_bang, 0, 0)
+		}
+	}
+
+	public class pd_defaultpointer implements Function2<void,t_pd,t_gpointer> {
+		public void eval(t_pd x, t_gpointer gp) {
+			t_atom at;
+			SETPOINTER(at, gp);
+			if( !(x.c_listmethod instanceof pd_defaultlist) )
+				x.c_listmethod.eval(x, 0, 1, at);
+			else
+				x.c_anymethod.eval(x, s_pointer, 1, at);
+		}
+	}
+
+	public class pd_defaultfloat implements Function2<void,t_pd,t_float> {
+		public void eval(t_pd x, t_float f) {
+			t_atom at;
+			SETFLOAT(at, f);
+			if( !(x.c_listmethod instanceof pd_defaultlist) )
+				x.c_listmethod.eval(x, 0, 1, at);
+			else
+				x.c_anymethod.eval(x, s_float, 1, at);
+		}
+	}
+
+	public class pd_defaultsymbol implements Function2<void,t_pd,t_symbol> {
+		public void eval(t_pd x, t_symbol s) {
+			t_atom at;
+			SETSYMBOL(at, s);
+			if( !(x.c_listmethod instanceof pd_defaultlist) )
+				x.c_listmethod.eval(x, 0, 1, at);
+			else
+				x.c_anymethod.eval(x, s_symbol, 1, at);
+		}
+	}
+
+	//public void obj_list(t_object x, t_symbol s, int argc, t_atom[] argv) {}
+	//public static void class_nosavefn(t_gobj z, t_binbuf b) {}
+	public class pd_defaultlist implements Function4<void,t_pd,t_symbol,int,t_atom[]> {
+		public void eval(t_pd x, t_symbol s, int argc, t_atom[] argv) {
+			if( argc == 0 && !(x.c_bangmethod instance_of pd_defaultbang) ) {
+				x.c_bangmethod.eval(x);
+				return;
+			}
+
+			if( argc == 1 ) {
+				if( argv[0].a_type == A_FLOAT && !(x.c_floatmethod instance_of pd_defaultfloat) ) {
+					x.c_floatmethod.eval(x, argv[0].a_w.w_float);
+					return;
+				} else if( argv[0].a_type == A_SYMBOL && !(x.c_symbolmethod instance_of pd_defaultsymbol) ) {
+					x.c_symbolmethod.eval(x, argv[0].a_w.w_symbol);
+					return;
+				} else if( argv[0].a_type == A_POINTER && !(x.c_pointermethod instance_of pd_defaultpointer) ) {
+					x.c_pointermethod.eval(x, argv[0].a_w.w_gpointer);
+					return;
+				}
+			}
+
+			if( !(x.c_anymethod instance_of pd_defaultanything) )
+				x.c_anymethod.eval(x, s_list, argc, argv);
+			else if( x.c_patchable )
+				obj_list((t_object)x, s, argc, argv);
+			else
+				pd_defaultanything.eval(x, s_list, argc, argv);
+		}
+	}
+
+	public static t_class class_new(t_symbol s, t_newmethod newmethod, t_method freemethod,
+		size_t size, int flags, t_atomtype ... type1) {
+		t_class c = new t_class();
+		int count = 0;
+		t_atomtype[] vec = new t_atomtype[MAXPDARG];
+		int typeflag = flags & CLASS_TYPEMASK;
+		if(!typeflag)
+			typeflag = CLASS_PATCHABLE;
+
+		while(true) {
+			if(count >= MAXPDARG) {
+				error("class " + s.s_name + ": sorry: only " + MAXPDARG + " args typechecked; use A_GIMME");
+				break;
+			}
+			if(count < type1.length)
+				vec[count] = type1[count];
+			else
+				vec[count] = null;
+			count++;
+		}
+
+		if(pd_objectmaker && newmethod) {
+			class_addmethod(pd_objectmaker, newmethod, s, vec[0], vec[1], vec[2], vec[3], vec[4], vec[5]);
+			if(class_loadsym) {
+				String loadstring = class_loadsym.s_name;
+				if(loadstring.length() > s.s_name.length() &&
+					loadstring.substring(loadstring.length() - s.s_name.length()).equals(s.s_name))
+					class_addmethod(pd_objectmaker, newmethod, class_loadsym,
+						vec[0], vec[1], vec[2], vec[3], vec[4], vec[5]);
+			}
+		}
+
+		c.c_helpname = s;
+		c.c_name = s;
+		c.c_size = size;
+		c.c_methods = null;
+		c.c_nmethod = 0;
+		c.c_freemethod = freemethod;
+		c.c_bangmethod = pd_defaultbang;
+		c.c_pointermethod = pd_defaultpointer;
+		c.c_floatmethod = pd_defaultfloat;
+		c.c_symbolmethod = pd_defaultsymbol;
+		c.c_listmethod = pd_defaultlist;
+		c.c_anymethod = pd_defaultanything;
+		c.c_wb = (typeflag == CLASS_PATCHABLE ? text_widgetbehavior : 0);
+		c.c_pwb = 0;
+		c.c_firstin = ((flags & CLASS_NOINLET) == 0);
+		c.c_patchable = (typeflag == CLASS_PATCHABLE);
+		c.c_gobj = (typeflag >= CLASS_GOBJ);
+		c.c_drawcommand = 0;
+		c.c_floatsignalin = 0;
+		c.c_externdir = class_extern_dir;
+		c.c_savefn = (typeflag == CLASS_PATCHABLE ? text_save : class_nosavefn);
+		return c;
+	}
+
+	public static void class_addcreator(t_newmethod newmethod, t_symbol s, t_atomtype ... type1) {
+		int count = 0;
+		t_atomtype[] vec = new t_atomtype[MAXPDARG];
+		while(true) {
+			if(count >= MAXPDARG) {
+				error("class " + s.s_name + ": sorry: only " + MAXPDARG + " args typechecked; use A_GIMME");
+				break;
+			}
+			if(count < type1.length)
+				vec[count] = type1[count];
+			else
+				vec[count] = null;
+			count++;
+		}
+		class_addmethod(pd_objectmaker, newmethod, s, vec[0], vec[1], vec[2], vec[3], vec[4], vec[5]);
+	}
+
+	public static void class_addmethod(t_class c, t_method fn, t_symbol sel, t_atomtype ... arg1) {
+		// 259
+	}
 
 	// m_pd.c:226
 	public static t_class bindlist_class;
@@ -406,7 +566,7 @@ public class Output2 {
 	}
 
 	public static void pd_list(t_pd x, t_symbol s, int argc, t_atom[] argv) {
-		x.c_listmethod.eval(x, s, argc, argv);
+		x.c_listmethod.eval(x, s_list, argc, argv); //NOTE: s_list OR s ??
 	}
 
 	public static void pd_init() {
