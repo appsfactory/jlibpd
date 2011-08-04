@@ -1,3 +1,24 @@
+/*
+ s.main	Line 24   //not sure of defining size of NFONT
+
+Not sure: if (sys_argparse (argc - 1 , argv[1] ))
+argv[1]? 
+
+
+sys_findprogdir not done yet in s.main
+
+
+sys_parsedevlist -> str = endp + 1?
+
+
+define: sys_messagelist :: line 659
+ 
+Incomplete: static void sys_afterargparse(void)
+(last function)
+ 
+ */
+
+
 import java.util.ArrayList;
 import java.util.Collections; 
 import java.util.List;
@@ -777,6 +798,12 @@ public static int sys_getblksize () throws Exception {
 
 
 
+public static void sys_addreferencepath () {
+	
+		String sbuf;
+		
+	
+	}
 
 
 
@@ -882,7 +909,265 @@ public static void sys_afterargparse ( void ) throws Exception {
 
 */
 
+
+
+
+
+
+// d_dac.c
+
+
+
+
+
+class t_dac {
+	  t_object x_obj;
+	    t_int x_n;
+	    t_int[] x_vec;
+	    t_float x_f;
 }
+
+
+
+
+public static void dac_new (t_symbol s, int argc, t_atom[] argv)
+{
+	t_dac x = (t_dac) pd_new(dac_class);
+	t_atom[] defarg = new t_atom[2];
+	t_atom[] ap;
+	int i;
+	if (argc == 0){
+		
+		argv = defarg;
+        argc = 2;
+        SETFLOAT(defarg[0], 1);
+        SETFLOAT(defarg[1], 2);
+		
+	}
+	
+	x.x_n = argc;
+	x.x_vec= new t_int();
+	
+	for (i=0; i< argc; i++)
+	{
+	x.x_vec[i] = atom_getintarg(i, argc, argv);
+	for (i=1; i< argc; i++)
+	{
+		
+		inlet_new(x.x_obj, x.x_obj.ob_pd, s_signal, s_signal);
+		
+	}
+	x.x_f=0;
+// 	return x;
+	}
+}
+
+
+
+
+public static void dac_dsp (t_dac x, t_signal[] sp) {
+	
+	t_int i;
+	t_int[] ip;
+	t_signal[] sp2;
+	for (i=x.x_n, ip=x.x_vec, sp2=sp; i--; ip++, sp2++)
+		
+	{
+		int ch = ip[0] - 1;
+		if (sp2[0].s_n != 64)
+			error("dac~: bad vector size");
+		else if (ch >= 0 && ch < sys_get_outchannels())
+		{
+            dsp_add(plus_perform, 4, sys_soundout + 64*ch, sp2[0].s_vec, sys_soundout + 64*ch, 64);
+			
+		}
+		
+		
+	}
+}
+
+
+
+
+
+public static void dac_free(t_dac x)
+{
+    freebytes(x.x_vec, 64);
+	//dummy, dont need dac_free?
+}
+
+public static void dac_setup()
+{
+    dac_class = class_new(gensym("dac~"), (t_newmethod)dac_new,
+        (t_method)dac_free, 64, 0, A_GIMME, 0);
+    CLASS_MAINSIGNALIN(dac_class, t_dac, x_f);
+    class_addmethod(dac_class, (t_method)dac_dsp, gensym("dsp"), A_CANT, 0);
+    class_sethelpsymbol(dac_class, gensym("adc~_dac~"));
+}
+
+
+
+class t_adc {
+	  t_object x_obj;
+	    t_int x_n;
+	    t_int[] x_vec;
+	    
+}
+
+public static void adc_new (t_symbol s, int argc, t_atom[] argv)
+{
+	
+	t_adc x = (t_adc) pd_new(adc_class);
+	t_atom [] defarg = new t_atom[2];
+	t_atom[] ap;
+	int i;
+	if (argc  == 0)
+	{
+		argv = defarg;
+        argc = 2;
+        SETFLOAT(defarg[0], 1);
+        SETFLOAT(defarg[1], 2);
+		
+	}
+	
+	x.x_n = argc;
+	x.x_vec= new t_int();
+	
+	
+	for (i=0; i< argc; i++)
+	{
+	x.x_vec[i] = atom_getintarg(i, argc, argv);
+	for (i=1; i< argc; i++)
+		{
+			outlet_new(x.x_obj, s_signal);
+		}
+	}
+	
+	// return x;
+	
+	
+	
+}
+
+
+public static t_int copy_perform(t_int[] w) {
+	
+	t_sample in1 = (t_sample)(w[1]);
+	t_sample out = (t_sample)(w[2]);
+	int n = (int)(w[3]);
+	while (n--){
+		out++ = in1++;
+	}
+	return (w+4);
+}
+
+
+public static t_int copy_perf8(t_int w)
+{
+	
+	t_sample in1 = (t_sample)(w[1]);
+	t_sample out = (t_sample)(w[2]);
+	int n = (int)(w[3]);
+
+    for (; n; n -= 8, in1 += 8, out += 8)
+    {
+    	  t_sample f0 = in1[0];
+          t_sample f1 = in1[1];
+          t_sample f2 = in1[2];
+          t_sample f3 = in1[3];
+          t_sample f4 = in1[4];
+          t_sample f5 = in1[5];
+          t_sample f6 = in1[6];
+          t_sample f7 = in1[7];
+
+          out[0] = f0;
+          out[1] = f1;
+          out[2] = f2;
+          out[3] = f3;
+          out[4] = f4;
+          out[5] = f5;
+          out[6] = f6;
+          out[7] = f7;
+    	
+    }
+    return (w+4);
+	
+	
+}
+
+
+
+public static void dsp_add_copy(t_sample in, t_sample out, int n)
+{
+	
+	 if (n&7)
+	        dsp_add(copy_perform, 3, in, out, n);
+	    else        
+	        dsp_add(copy_perf8, 3, in, out, n);
+	
+	
+}
+
+
+public static void adc_dsp (t_adc x, t_signal[] sp)
+{
+	
+	t_int i;
+	t_int[] ip;
+	t_signal[] sp2;
+	
+    for (i = x.x_n, ip = x.x_vec, sp2 = sp; i--; ip++, sp2++)
+    {
+        int ch = ip[0] - 1;
+        if ((sp2[0]).s_n != 64)
+            error("adc~: bad vector size");
+        else if (ch >= 0 && ch < sys_get_inchannels())
+            dsp_add_copy(sys_soundin + 64*ch, (sp2[0]).s_vec, 64);
+        else dsp_add_zero((sp2[0]).s_vec, DEFDACBLKSIZE);
+    }   
+	
+	
+}
+
+
+public static void adc_free (t_adc x)
+{
+	
+	freebytes(x.x_vec, x.x_n * 32); // sizeof operator
+	
+}
+
+
+
+public static void adc_setup()
+{
+    adc_class = class_new(gensym("adc~"), (t_newmethod)adc_new, (t_method)adc_free, 64, 0, A_GIMME, 0);
+    class_addmethod(adc_class, (t_method)adc_dsp, gensym("dsp"), A_CANT, 0);
+    class_sethelpsymbol(adc_class, gensym("adc~_dac~"));
+}
+
+
+public static void d_dac_setup() {
+	
+	dac_setup();
+	adc_setup();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
 
 
 
