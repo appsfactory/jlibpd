@@ -1,4 +1,4 @@
-//AT:179 - 337
+//AT:619 (m_class.c)
 // Special Comments
 //  - TODO: This should be checked over later, when the code is complete enough that functions
 //      call this or interact with it
@@ -45,10 +45,22 @@ public class Output2 {
 
 	final static boolean PD_USE_TE_XPIX = true; //m_pd.h:640
 
+	final static int HASHSIZE = 1024;
+	static t_symbol[] symhash = new t_symbol[HASHSIZE];
+	final static int MAXOBJDEPTH = 1000;
+	static int tryingalready;
+	static t_pd newest = null;
+
 	class t_symbol {
 		String s_name;
 		Object s_thing;
 		t_symbol s_next;
+
+		public t_symbol(String n, Object t, t_symbol s) {
+			s_name  = n;
+			s_thing = t;
+			s_next  = s;
+		}
 	}
 
 	class gp_un2 { }
@@ -176,7 +188,7 @@ public class Output2 {
 		int bufsize;
 	}
 
-	// m_class.c:259 (337)
+	// m_class.c:591 (619)
 	public static t_symbol class_loadsym;
 	public static t_pd pd_objectmaker;
 	public static t_pd pd_canvasmaker;
@@ -335,7 +347,276 @@ public class Output2 {
 	}
 
 	public static void class_addmethod(t_class c, t_method fn, t_symbol sel, t_atomtype ... arg1) {
-		// 259
+		boolean bug = false;
+		t_atomtype argtype = (arg1.length > 0 ? arg1[0] : null);
+
+		if(sel == s_signal) {
+			if(c.c_floatsignalin)
+				post("warning: signal method overrides class_mainsignalin");
+			c.c_floatsignalin = -1;
+		}
+
+		if(sel == s_bang) {
+			if(argtype == null) {
+				class_addbang(c, fn);
+				return;
+			}
+		} else if(sel == s_float) {
+			if(!(argtype != A_FLOAT || (arg1.length > 1 && arg1[1] != null))) {
+				class_doaddfloat(c, fn);
+				return;
+			}
+		} else if(sel == s_symbol) {
+			if(!(argtype != A_SYMBOL || (arg1.length > 1 && arg1[1] != null))) {
+				class_doaddfloat;
+				return;
+			}
+		} else if(sel == s_list) {
+			if(argtype == A_GIMME) {
+				class_addlist(c, fn);
+				return;
+			}
+		} else if(sel == s_anything) {
+			if(argtype == A_GIMME) {
+				class_addanything(c, fn);
+				return;
+			}
+		} else {
+			for(int i=0; i<c.c_nmethod; i++) {
+				if(c.c_methods[i].me_name == sel) {
+					String nbuf = sel.s_name + "_aliased";
+					c.c_methods[i].me_name = gensym(nbuf);
+					if(c == pd_objectmaker)
+						post("warning: class '" + sel.s_name + "' overwritten; old one renamed '" + nbuf + "'");
+					else
+						post("warning: old method '" + sel.s_name + "' for class '" + c.c_name.s_name + "' renamed '" + nbuf + "'");
+				}
+			}
+
+			t_methodentry[] methods = new t_methodentry[c.c_nmethod+1];
+			t_methodentry m = new t_methodentry();
+			for(int i=0; i<c_nmethod; i++)
+				methods[i] = c.c_methods[i];
+			methods[c_nmethod] = m;
+			c.c_nmethod++;
+			m.me_name = sel;
+			m.me_fun = (t_gotfun)fn;
+			m.me_arg = new t_atomtype[(arg1.length < MAXPDARG ? arg1.length : MAXPDARG)+1];
+
+			nargs = 0;
+			for(; nargs<arg1.length; nargs++) {
+				m.me_arg[nargs] = arg1[nargs];
+				if(nargs >= MAXPDARG) {
+					error(c.c_name.s_name + "_" + sel.s_name + ": only " + MAXPDARG + " arguments are typecheckable; use A_GIMME");
+				}
+			}
+			m.me_arg[m.me_arg.length] = A_NULL;
+			return;
+		}
+
+		bug("class_addmethod: " + c.c_name.s_name + "_" + sel.s_name + ": bad argument types\n");
+	}
+
+	public static void class_addbang(t_class c, t_method fn) {
+		c.c_bangmethod = fn;
+	}
+
+	public static void class_addpointer(t_class c, t_method fn) {
+		c.c_pointermethod = fn;
+	}
+
+	public static void class_doaddfloat(t_class c, t_method fn) {
+		c.c_floatmethod = fn;
+	}
+
+	public static void class_addsymbol(t_class c, t_method fn) {
+		c.c_symbolmethod = fn;
+	}
+
+	public static void class_addlist(t_class c, t_method fn) {
+		c.c_listmethod = fn;
+	}
+
+	public static void class_addanything(t_class c, t_method fn) {
+		c.c_anymethod = fn;
+	}
+
+	public static void class_setwidget(t_class c, t_widgetbehavior w) {
+		c.c_wb = w;
+	}
+
+	public static void class_setparentwidget(t_class c, t_parentwidgetbehavior pw) {
+		c.c_pwb = pw;
+	}
+
+	public static String class_getname(t_class c) {
+		return c.c_name.s_name;
+	}
+
+	public static String class_gethelpname(t_class c) {
+		return c.c_helpname.s_name;
+	}
+
+	public static void class_sethelpsymbol(t_class c, t_symbol s) {
+		c.c_helpname = s;
+	}
+
+	public static t_parentwidgetbehavior pd_getparentwidget(t_pd x) {
+		return x.c_pwb;
+	}
+
+	public static void class_setdrawcommand(t_class t) {
+		c.c_drawcommand = 1;
+	}
+
+	public static int class_isdrawcommand(t_class c) {
+		return c.c_drawcommand;
+	}
+
+	public static void pd_floatforsignal(t_pd x, t_float f) {
+		int offset = x.c_floatsignalin;
+		if(offset > 0)
+			// pointer arithmetic :S
+			//TODO: I have no idea what's happening here: m_class.c:419
+		else
+			pd_error(x.c_name.s_name + ": float unexpected for signal input");
+	}
+
+	public static void class_domainsignalin(t_class c, int onset) {
+		if(onset <= 0)
+			onset = -1;
+		else {
+			if(!(c.c_floatmethod instance_of pd_defaultfloat))
+				post("warning: " + c.c_name.s_name + ": float method overwritten");
+			c.c_floatmethod = (t_floatmethod)pd_floatforsignal;
+		}
+		c.c_floatsignalin = onset;
+	}
+
+	public static void class_set_extern_dir(t_symbol s) {
+		class_extern_dir = s;
+	}
+
+	public static String class_gethelpdir(t_class c) {
+		return c.c_externdir.s_name;
+	}
+
+	public static void class_nosavefn(t_gobj z, t_binbuf b) {
+		bug("save function called but not defined");
+	}
+
+	public static class_setsavefn(t_class c, t_savefn f) {
+		c->c_savefn = f;
+	}
+
+	public static t_savefn class_getsavefn(t_class c) {
+		return c.c_savefn;
+	}
+
+	public static void class_setpropertiesfn(t_class c, t_propertiesfn f) {
+		c.c_propertiesfn = f;
+	}
+
+	public static t_propertiesfn class_getpropertiesfn(t_class c) {
+		return c.c_propertiesfn;
+	}
+
+	public static t_symbol dogensym(String s, t_symbol oldsym) {
+		t_symbol sym1, sym2, sym1_prev, sym2_prev;
+		unsigned int hash1 = 0, hash2 = 0;
+		for(int i=0; i<s.length(); i++) {
+			hash1 += (int)s.charAt(i);
+			hash2 += hash1;
+		}
+
+		sym1_prev = null;
+		sym1 = symhash[hash2 & (HASHSIZE-1)];
+		while(sym1 != null) {
+			sym2_prev = sym1_prev;
+			sym2 = sym1;
+			if(sym2.s_name.equals(s))
+				return sym2;
+			sym1_prev = sym1;
+			sym1 = sym1.s_next;
+		}
+
+		if(oldsym != null) {
+			sym2 = oldsym;
+			sym2_prev.s_next = sym2;
+		} else {
+			sym2 = new t_symbol();
+			sym2_prev.s_next = sym2;
+			sym2.s_name = s;
+			sym2.s_next = null;
+			sym2.s_thing = null;
+		}
+		sym1_prev.s_next = sym2;
+		return sym2;
+	}
+
+	public static t_symbol gensym(String s) {
+		return dogensym(s, null);
+	}
+
+	public static t_symbol addfileextent(t_symbol s) {
+		if(s.s_name.substring(s.s_name.length()-3).equals(".pd"))
+			return s;
+		else
+			return gensym(s.s_name + ".pd");
+	}
+
+	public static void new_anything(Object dummy, t_symbol s, int argc, t_atom[] argv) {
+		if(tryingagain > MAXOBJDEPTH) {
+			error("maximum object loading depth " + MAXOBJDEPTH + " reached");
+			return;
+		}
+
+		newest = null;
+		class_loadsym = s;
+		if(sys_load_lib(canvas_getcurrent(), s.s_name) {
+			tryingalready++;
+			typedmess(dummy, s, argc, argv);
+			tryingalready--;
+			return;
+		}
+
+		class_loadsym = null;
+		current = s__X.s_thing;
+		int fd = canvas_open(canvas_getcurrent(), s.s_name, ".pd", dirbuf, nameptr, MAXPDSTRING, 0);
+		if(fd < 0)
+			fd = canvas_open(canvas_getcurrent(), s.s_name, ".pat", dirbuf, nameptr, MAXPDSTRING, 0);
+		if(fd >= 0) {
+			close(fd);
+			if(!pd_setloadingabstraction(s)) {
+				canvas_setargs(argc, argv);
+				binbuf_evalfile(gensym(nameptr), gensym(dirbuf));
+				if(s__X.s_thing != current)
+					canvas_popabstraction(s__X.s_thing);
+				canvas_setargs(0, 0);
+			} else
+				error(s.s_name + ": can't load abstraction within itself\n");
+		} else
+			newest = null;
+	}
+
+	public static t_symbol s_pointer  = new t_symbol("pointer", null, null);
+	public static t_symbol s_float    = new t_symbol("float", null, null);
+	public static t_symbol s_symbol   = new t_symbol("symbol", null, null);
+	public static t_symbol s_bang     = new t_symbol("bang", null, null);
+	public static t_symbol s_list     = new t_symbol("list", null, null);
+	public static t_symbol s_anything = new t_symbol("anything", null, null);
+	public static t_symbol s_signal   = new t_symbol("signal", null, null);
+	public static t_symbol s__N       = new t_symbol("#N", null, null);
+	public static t_symbol s__X       = new t_symbol("#X", null, null);
+	public static t_symbol s_x        = new t_symbol("x", null, null);
+	public static t_symbol s_y        = new t_symbol("y", null, null);
+	public static t_symbol s_         = new t_symbol("", null, null);
+
+	public static t_symbol[] symlist = { s_pointer, s_float, s_symbol,
+		s_bang, s_list, s_anything, s_signal, s__N, s__X, s_x, s_y, s_ };
+
+	public static void mess_init() {
+		//591
 	}
 
 	// m_pd.c:226
