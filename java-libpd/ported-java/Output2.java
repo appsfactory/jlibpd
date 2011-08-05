@@ -1,8 +1,16 @@
-//AT:
+//AT:247
 // Special Comments
 //  - TODO: This should be checked over later, when the code is complete enough that functions
 //      call this or interact with it
 //  - NOTE: There's likely something that differs between the Java and C versions here
+
+/* Files
+   - m_pd.h:22
+	 - m_obj.c:198
+   - m_class.c:198
+   - s_inter.c:1130
+   - m_binbuf.c:1124 (1 struct)
+*/
 
 import java.io.File;
 import java.util.List;
@@ -64,8 +72,8 @@ public class Output2 {
 	}
 
 	class gp_un2 { }
-	class gp_un2_glist { Object gs_glist; } //TODO: could be more specific than 'Object'
-	class gp_un2_array { Object[] gs_array; } //TODO: could be more specific than 'Object'
+	class gp_un2_glist extends gp_un2 { Object gs_glist; } //TODO: could be more specific than 'Object'
+	class gp_un2_array extends gp_un2 { Object[] gs_array; } //TODO: could be more specific than 'Object'
 	class t_gstub {
 		gp_un2 gp_un;
 		int gs_which;
@@ -73,8 +81,8 @@ public class Output2 {
 	}
 
 	class gp_un1 { }
-	class gp_un1_scalar { Object gp_scalar; }
-	class gp_un1_word   { Object gp_w; }
+	class gp_un1_scalar extends gp_un1 { Object gp_scalar; }
+	class gp_un1_word   extends gp_un1 { Object gp_w; }
 	class t_gpointer {
 		gp_un1 gp_un;
 		int gp_valid;
@@ -186,6 +194,57 @@ public class Output2 {
 		int coefsize;
 		t_sample buffer;
 		int bufsize;
+	}
+
+	// m_obj.c
+	public static t_class inlet_class, pointerinlet_class, floatinlet_class, symbolinlet_class;
+
+	public class inletunion {};
+	public class inletunion_symto            { t_symbol   iu_symto; }
+	public class inletunion_pointerslot      { t_gpointer iu_pointerslot; }
+	public class inletunion_floatslot        { t_float    iu_floatslot; }
+	public class inletunion_symslot          { t_symbol   iu_symslot; }
+	public class inletunion_floatsignalvalue { t_float iu_floatsignalvalue; }
+
+	public class t_inlet {
+		t_pd i_pd;
+		t_inlet i_next;
+		t_object i_owner;
+		t_pd i_dest;
+		t_symbol i_symfrom;
+		t_symbol i_symto;
+		inletunion i_un;
+	}
+
+	public static boolean ISINLET(Object pd) {
+		return (pd == inlet_class        ||
+						pd == pointerinlet_class ||
+						pd == floatinlet_class   ||
+						pd == symbolinlet_class);
+	}
+
+	public static t_inlet inlet_new(t_object owner, t_pd dest, t_symbol s1, t_symbol s2) {
+		t_inlet x = pd_new(inlet_class), y, y2;
+		x.i_owner = owner;
+		x.i_dest  = dest;
+		if(s1 == s_signal)
+			x.i_un.iu_floatsignalvalue = 0;
+		else
+			x.i_symto = s2;
+		x.i_symfrom = s1;
+		x.i_next = null;
+		if(owner.ob_inlet != null) {
+			y = owner.ob_inlet;
+			while(y.i_next != null)
+				y = y.i_next;
+			y.i_next = x;
+		} else
+			owner.ob_inlet = x;
+		return x;
+	}
+
+	public static t_inlet signalinlet_new(t_object owner, t_float f) {
+		//67
 	}
 
 	// m_class.c
