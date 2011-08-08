@@ -244,7 +244,273 @@ public class Output2 {
 	}
 
 	public static t_inlet signalinlet_new(t_object owner, t_float f) {
-		//67
+		t_inlet x = inlet_new(owner, owner.ob_pd, s_signal, s_signal);
+		x.i_un.iu_floatsignalvalue = f;
+		return x;
+	}
+
+	public static void inlet_wrong(t_inlet x, t_symbol s) {
+		pd_error(x.i_owner, "inlet: expected '" + x.i_symfrom.s_name + "' but got '" + s.s_name + "'");
+	}
+
+	//public static void inlet_list(t_inlet x, t_symbol s, int argc, t_atom[] argv) { }
+
+	class inlet_bang implements Function1<void,t_inlet> {
+		public static void eval(t_inlet x) {
+			if(x.i_symfrom == s_bang)
+				pd_vmess(x.i_dest, x.i_symto, "");
+			else if(!x.i_symfrom)
+				pd_bang(x.i_dest);
+			else if(x.i_symfrom == s_list)
+				inlet_list(x, s_bang, 0, 0)
+			else
+				inlet_wrong(x, s_bang);
+		}
+	}
+
+	class inlet_pointer implements Function2<void,t_inlet,t_gpointer> {
+		public static void eval(t_inlet x, t_gpointer gp) {
+			if(x.i_symfrom == s_pointer)
+				pd_vmess(x.i_dest, x.i_symto, "p", gp);
+			else if(!x.i_symfrom)
+				pd_pointer(x.i_dest, gp);
+			else if(x.i_symfrom == s_list) {
+				t_atom a;
+				SETPOINTER(a, gp);
+				inlet_list(x, s_pointer);
+			} else
+				inlet_wrong(x, s_pointer);
+		}
+	}
+
+	class inlet_float implements Function2<void,t_inlet,t_float> {
+		public static void eval(t_inlet x, t_float f) {
+			if(x.i_symfrom == s_float)
+				pd_vmess(x.i_dest, x.i_symto, "f", f);
+			else if(x.i_symfrom == s_signal)
+				x.i_un.iu_floatsignalvalue = f;
+			else if(!x.i_symfrom)
+				pd_float(x.i_dest, f);
+			else if(x.i_symfrom == s_list) {
+				t_atom a;
+				SETFLOAT(a, f);
+				inlet_list(x, s_float, a);
+			} else
+				inlet_wrong(x, s_float);
+		}
+	}
+
+	class inlet_symbol implements Function2<void,t_inlet,t_symbol> {
+		public static void eval(t_inlet x, t_symbol s) {
+			if(x.i_symfrom == s_symbol)
+				pd_vmess(x.i_dest, x.i_symto, "s", s);
+			else if(!x.i_symfrom)
+				pd_symbol(x.i_dest, s);
+			else if(x.i_symfrom == s_list) {
+				t_atom a;
+				SETSYMBOL(a, s);
+				inlet_list(x, s_symbol, 1, a);
+			} else
+				inlet_wrong(x, s_symbol);
+		}
+	}
+
+	class inlet_list implements Function4<void,t_inlet,t_symbol,int,t_atom> {
+		public static void eval(t_inlet x, t_symbol s, int argc, t_atom[] argv) {
+			t_atom at;
+			if(x.i_symfrom == s_list   || x.i_symfrom == s_float ||
+				 x.i_symfrom == s_symbol || x.i_symfrom == s_pointer)
+				typedmess(x.i_dest, x.i_symto, argc, argv);
+			else if(!x.i_symfrom)
+				pd_list(x.i_dest, s, argc, arg v);
+			else if(argc == 0)
+				inlet_bang(x);
+			else if(argc == 1 && argv[0].a_type == A_FLOAT)
+				inlet_float(x, atom_getfloat(argv[0]));
+			else if(argc == 1 && argv[0].a_type == A_SYMBOL)
+				inlet_symbol(x, atom_getsymbol(argv[0]));
+			else
+				inlet_wrong(x, s_list);
+		}
+	}
+
+	class inlet_anything implements Function4<void,t_inlet,t_symbol,int,t_atom> {
+		public static void eval(t_inlet x, t_symbol s, int argc, t_atom[] argv) {
+			if(x.i_symfrom == s)
+				typedmess(x.i_dest, x.i_symto, argc, argv);
+			else if(!x.i_symfrom)
+				typedmess(x.i_dest, s, argc, argv);
+			else
+				inlet_wrong(x, s);
+		}
+	}
+
+	public static void inlet_free(t_inlet x) {
+		t_object y = x.i_owner;
+		t_inlet x2 = y.ob_inlet;
+		if(y.ob_inlet == x)
+			y.ob_inlet = x.i_next;
+		else {
+			while(x2) {
+				if(x2.i_next == x) {
+					x2.i_next = x.i_next;
+					break;
+				}
+				x2 = x2.i_next;
+			}
+		}
+	}
+
+	class pointerinlet_pointer implements Function2<void,t_inlet,t_gpointer> {
+		public static void eval(t_inlet x, t_gpointer gp) {
+			gpointer_unset(x.i_pointerslot);
+			x.i_pointerslot = gp;
+			if(gp.gp_stub)
+				gp.gp_stub.gs_refcount++;
+		}
+	}
+
+	public static t_inlet pointerinlet_new(t_object owner, t_gpointer gp) {
+		t_inlet x = (t_inlet)pd_new(pointerinlet_class), y, y2;
+		x.i_owner = owner;
+		x.i_dest = null;
+		x.i_symfrom = s_pointer;
+		x.i_pointerslot = gp;
+		x.i_next = null;
+		if(owner.ob_inlet) {
+			y = owner.ob_inlet;
+			y2 = y.i_next;
+			while(y2) {
+				y = y2;
+				y2 = y.i_next;
+			}
+			y.i_next = x;
+		} else
+			owner.ob_inlet = x;
+		return x;
+	}
+
+	class floatinlet_float implements Function2<void,t_inlet,t_float> {
+		public static void eval(t_inlet x, t_float f) {
+			x.i_floatslot = f;
+		}
+	}
+
+	public static t_inlet floatinlet_new(t_object owner, t_float fp) {
+		t_inlet x = (t_inlet)pd_new(floatinlet_class), y, y2;
+		x.i_owner = owner;
+		x.i_dest = null;
+		x.i_symfrom = s_float;
+		x.i_floatslot = fp;
+		x.i_next = null;
+		if(owner.ob_inlet) {
+			y = owner.ob_inlet;
+			y2 = y.i_next;
+			while(y2) {
+				y = y2;
+				y2 = y.i_next;
+			}
+			y.i_next = x;
+		} else
+			owner.ob_inlet = x;
+		return x;
+	}
+
+	class symbolinlet_symbol implements Function2<void,t_inlet,t_symbol> {
+		public static void eval(t_inlet x, t_symbol s) {
+			x.i_symslot = s;
+		}
+	}
+
+	public static t_inlet symbolinlet_new(t_object owner, t_symbol sp) {
+		t_inlet x = (t_inlet)pd_new(symbolinlet_class), y, y2;
+		x.i_owner = owner;
+		x.i_dest = null;
+		x.i_symfrom = s_symbol;
+		x.i_symslot = sp;
+		x.i_next = null;
+		if(owner.ob_inlet) {
+			y = owner.ob_inlet;
+			y2 = y.i_next;
+			while(y2) {
+				y = y2;
+				y2 = y.i_next;
+			}
+			y.i_next = x;
+		} else
+			owner.ob_inlet = x;
+		return x;
+	}
+
+	public static void obj_list(t_object x, t_symbol s, int argc, t_atom[] argv) {
+		t_inlet ip = x.ob_inlet;
+		if(argc == 0)
+			return;
+		for(int i=1; ip && i<argv.length; i++) {
+			if(argv[i].a_type == A_POINTER)
+				pd_pointer(ip.i_pd, argv[i].a_w.w_gpointer);
+			else if(argv[i].a_type == A_FLOAT)
+				pd_float(ip.i_od, argv[i].a_w.w_float);
+			else
+				pd_symbol(ip.i_pd, argv[i].a_w.w_symbol;
+			ip = ip.i_next;
+		}
+		if(argv[0].a_type == A_POINTER)
+			pd_pointer(x.ob_pd, argv[0].a_w.w_gpointer);
+		else if(argv[0].a_type == A_FLOAT)
+			pd_float(x.ob_pd, argv[0].a_w.w_float);
+		else
+			pd_symbol(x.ob_pd, argv[0].a_w.w_symbol;
+	}
+
+	public static void obj_init() {
+		inlet_class = class_new(gensym("inlet"), 0, 0, CLASS_PD, 0);
+		class_addbang(inlet_class, new inlet_bang());
+		class_addpointer(inlet_class, new inlet_pointer());
+		class_addfloat(inlet_class, new inlet_float());
+		class_addsymbol(inlet_class, new inlet_symbol());
+		class_addlist(inlet_class, new inlet_list());
+		class_addanything(inlet_class, new inlet_anything());
+
+		pointerinlet_class = class_new(gensym("inlet"), 0, 0, CLASS_PD, 0);
+		class_addpointer(pointerinlet_class, new pointerinlet_pointer());
+		class_addanything(pointerinlet_class, new pointerinlet_anything());
+
+		floatinlet_class = class_new(gensym("inlet"), 0, 0, CLASS_PD, 0);
+		class_addfloat(flaotinlet_class, new floatinlet_float());
+		class_addanything(floatinlet_class, new inlet_wrong());
+
+		symbolinlet_class = class_new(gensym("inlet"), 0, 0, CLASS_PD, 0);
+		class_addsymbol(symbolinlet_class, new symbolinlet_symbol());
+		class_addanything(symbolinlet_class, new inlet_wrong());
+	}
+
+	public static int stackcount = 0;
+	public final static int STACKITER = 1000;
+	public static int outlet_eventno = 0;
+
+	public static void outlet_setstacklim() {
+		outlet_eventno++;
+	}
+
+	public static int sched_geteventno() {
+		return outlet_eventno;
+	}
+
+	class t_outconnect {
+		t_outconnect oc_next;
+		t_pd oc_to;
+	}
+
+	class t_outlet {
+		t_object o_owner;
+		t_outlet o_next;
+		t_outconnect o_connections;
+		t_symbol o_sym;
+	}
+
+	public static t_outlet outlet_new(t_object owner, t_symbol s) {
+		//332
 	}
 
 	// m_class.c
