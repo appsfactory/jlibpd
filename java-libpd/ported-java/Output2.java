@@ -1,8 +1,16 @@
-//AT:619 (m_class.c)
+//AT:247
 // Special Comments
 //  - TODO: This should be checked over later, when the code is complete enough that functions
 //      call this or interact with it
 //  - NOTE: There's likely something that differs between the Java and C versions here
+
+/* Files
+   - m_pd.h:22
+	 - m_obj.c:198
+   - m_class.c:198
+   - s_inter.c:1130
+   - m_binbuf.c:1124 (1 struct)
+*/
 
 import java.io.File;
 import java.util.List;
@@ -64,8 +72,8 @@ public class Output2 {
 	}
 
 	class gp_un2 { }
-	class gp_un2_glist { Object gs_glist; } //TODO: could be more specific than 'Object'
-	class gp_un2_array { Object[] gs_array; } //TODO: could be more specific than 'Object'
+	class gp_un2_glist extends gp_un2 { Object gs_glist; } //TODO: could be more specific than 'Object'
+	class gp_un2_array extends gp_un2 { Object[] gs_array; } //TODO: could be more specific than 'Object'
 	class t_gstub {
 		gp_un2 gp_un;
 		int gs_which;
@@ -73,8 +81,8 @@ public class Output2 {
 	}
 
 	class gp_un1 { }
-	class gp_un1_scalar { Object gp_scalar; }
-	class gp_un1_word   { Object gp_w; }
+	class gp_un1_scalar extends gp_un1 { Object gp_scalar; }
+	class gp_un1_word   extends gp_un1 { Object gp_w; }
 	class t_gpointer {
 		gp_un1 gp_un;
 		int gp_valid;
@@ -188,7 +196,58 @@ public class Output2 {
 		int bufsize;
 	}
 
-	// m_class.c:591 (619)
+	// m_obj.c
+	public static t_class inlet_class, pointerinlet_class, floatinlet_class, symbolinlet_class;
+
+	public class inletunion {};
+	public class inletunion_symto            { t_symbol   iu_symto; }
+	public class inletunion_pointerslot      { t_gpointer iu_pointerslot; }
+	public class inletunion_floatslot        { t_float    iu_floatslot; }
+	public class inletunion_symslot          { t_symbol   iu_symslot; }
+	public class inletunion_floatsignalvalue { t_float iu_floatsignalvalue; }
+
+	public class t_inlet {
+		t_pd i_pd;
+		t_inlet i_next;
+		t_object i_owner;
+		t_pd i_dest;
+		t_symbol i_symfrom;
+		t_symbol i_symto;
+		inletunion i_un;
+	}
+
+	public static boolean ISINLET(Object pd) {
+		return (pd == inlet_class        ||
+						pd == pointerinlet_class ||
+						pd == floatinlet_class   ||
+						pd == symbolinlet_class);
+	}
+
+	public static t_inlet inlet_new(t_object owner, t_pd dest, t_symbol s1, t_symbol s2) {
+		t_inlet x = pd_new(inlet_class), y, y2;
+		x.i_owner = owner;
+		x.i_dest  = dest;
+		if(s1 == s_signal)
+			x.i_un.iu_floatsignalvalue = 0;
+		else
+			x.i_symto = s2;
+		x.i_symfrom = s1;
+		x.i_next = null;
+		if(owner.ob_inlet != null) {
+			y = owner.ob_inlet;
+			while(y.i_next != null)
+				y = y.i_next;
+			y.i_next = x;
+		} else
+			owner.ob_inlet = x;
+		return x;
+	}
+
+	public static t_inlet signalinlet_new(t_object owner, t_float f) {
+		//67
+	}
+
+	// m_class.c
 	public static t_symbol class_loadsym;
 	public static t_pd pd_objectmaker;
 	public static t_pd pd_canvasmaker;
@@ -274,7 +333,7 @@ public class Output2 {
 	}
 
 	public static t_class class_new(t_symbol s, t_newmethod newmethod, t_method freemethod,
-		size_t size, int flags, t_atomtype ... type1) {
+		int flags, t_atomtype ... type1) {
 		t_class c = new t_class();
 		int count = 0;
 		t_atomtype[] vec = new t_atomtype[MAXPDARG];
@@ -307,7 +366,7 @@ public class Output2 {
 
 		c.c_helpname = s;
 		c.c_name = s;
-		c.c_size = size;
+		c.c_size = 0;
 		c.c_methods = null;
 		c.c_nmethod = 0;
 		c.c_freemethod = freemethod;
@@ -476,8 +535,9 @@ public class Output2 {
 	public static void pd_floatforsignal(t_pd x, t_float f) {
 		int offset = x.c_floatsignalin;
 		if(offset > 0)
-			// pointer arithmetic :S
-			//TODO: I have no idea what's happening here: m_class.c:419
+			//TODO: this needs to be added to t_class, or another solution can be found
+			// Code at m_class.c:419
+			x.c_floatforsignal = f;
 		else
 			pd_error(x.c_name.s_name + ": float unexpected for signal input");
 	}
@@ -616,7 +676,262 @@ public class Output2 {
 		s_bang, s_list, s_anything, s_signal, s__N, s__X, s_x, s_y, s_ };
 
 	public static void mess_init() {
-		//591
+		if(pd_objectmaker != null)
+			return;
+		for(int i = symlist.length - 1; i >= 0; i++)
+			dogensym(symlist[i].s_name, symlist[i]);			
+		pd_objectmaker = class_new(gensym("objectmaker"), 0, 0, CLASS_DEFAULT, A_NULL);
+		pd_canvasmaker = class_new(gensym("classmaker"), 0, 0, CLASS_DEFAULT, A_NULL);
+		pd_bind(pd_canvasmaker, s__N);
+		class_addanything(pd_objectmaker, new_anything);
+	}
+
+	public static t_pd pd_newest() {
+		return newest;
+	}
+
+	public static void pd_typedmess(t_pd x, t_symbol s, int argc, t_atom[] argv) {
+		boolean badarg = false;
+		t_methodentry m;
+		t_atomtype[] wp;
+		t_int[] ai = new t_int[MAXPDARG+1];
+		t_floatarg[] ad = new t_floatarg[MAXPDARG+1];
+		int ap = 0, dp = 0, narg = 0, argvi = 0;
+		t_pd bonzo;
+
+		if(s == s_float) {
+			if(argc == 0) {
+				c.c_floatmethod.eval(x, 0);
+				return;
+			} else if(argv[0].a_type == A_FLOAT) {
+				c.c_floatmethod.eval(x, argv[0].a_w.w_float);
+				return;
+			} else
+				badarg = true;
+		}
+		if(s == s_bang) {
+			c.c_bangmethod.eval(x);
+			return;
+		}
+		if(s == s_list) {
+			c.c_listmethod.eval(x, s, argc, argv);
+			return;
+		}
+		if(s == s_symbol) {
+			if(argc != 0 && argv[0].a_type == A_SYMBOL)
+				c.c_symbolmethod.eval(x, argv[0].a_w.w_symbol);
+			else
+				c.c_symbolmethod.eval(x, s);
+			return;
+		}
+		
+		if(!badarg) {
+			for(int i=0; i<c.c_methods.length && !badarg; i++) {
+				m = c.c_methods[i];
+				if(m.me_name == s) {
+					wp = m.me_arg;
+					if(wp == A_GIMME) {
+						if(x == pd_objectmaker)
+							newest = m.me_fun.eval(s, argc, argv);
+						else
+							m.me_fun.eval(x, s, argc, argv);
+						return;
+					}
+					if(argc > MAXPDARG)
+						argc = MAXPDARG;
+					if(x != pd_objectmaker) {
+						ai[ap++] = x;
+						narg++;
+					}
+					for(int i=0; i<wp.length; i++) {
+						switch(wp[i]) {
+						case A_POINTER:
+							if(argc == 0) {
+								badarg = true;
+							} else {
+								if(argv[argvi].a_type == A_POINTER) {
+									ai[ap] = argv[argvi].a_w.w_gpointer;
+									argc--;
+									argvi++;
+								} else {
+									badarg = true;
+									break;
+								}
+							}
+							narg++;
+							ap++;
+							break;
+						case A_FLOAT:
+							if(argc == 0) {
+								badarg = true;
+								break;
+							}
+						case A_DEFFLOAT:
+							if(argc == 0)
+								ad[dp] = 0;
+							else {
+								if(argv[argvi].a_type == A_FLOAT)
+									ad[dp] = argv[argvi].a_w.w_float;
+								else {
+									badarg = true;
+									break;
+								}
+								argc--;
+								argvi++;
+							}
+							dp++;
+							break;
+						case A_SYMBOL:
+							if(argc == 0) {
+								badarg = true;
+								break;
+							}
+						case A_DEFSYM:
+							if(argc == 0)
+								ai[ap] = s_;
+							else {
+								if(argv[argvi].a_type == A_SYMBOL)
+									ad[ap] = argv[argvi].a_w.w_symbol;
+								else if(x == pd_objectmaker && argv.a_type == A_FLOAT && argv[argvi].a_w.w_float == 0)
+									ad[ap] = s_;
+								else {
+									badarg = true;
+									break;
+								}
+								argc--;
+								argvi++;
+							}
+							narg++;
+							ap++;
+						}
+						if(badarg)
+							break;
+					}
+
+					if(!badarg) {
+						switch(narg) {
+						case 0:
+							bonzo = (t_fun0.eval(m.me_fun)).eval(ad[0], ad[1], ad[2], ad[3], ad[4]);
+							break;
+						case 1:
+							bonzo = (t_fun1.eval(m.me_fun)).eval(ai[0], ad[0], ad[1], ad[2], ad[3],
+								ad[4]);
+							break;
+						case 2:
+							bonzo = (t_fun2.eval(m.me_fun)).eval(ai[0], ai[1], ad[0], ad[1], ad[2],
+								ad[3], ad[4]);
+							break;
+						case 3:
+							bonzo = (t_fun3.eval(m.me_fun)).eval(ai[0], ai[1], ai[2], ad[0], ad[1],
+								ad[2], ad[3], ad[4]);
+							break;
+						case 4:
+							bonzo = (t_fun4.eval(m.me_fun)).eval(ai[0], ai[1], ai[2], ai[3], ad[0],
+								ad[1], ad[2], ad[3], ad[4]);
+							break;
+						case 5:
+							bonzo = (t_fun5.eval(m.me_fun)).eval(ai[0], ai[1], ai[2], ai[3], ai[4],
+								ad[0], ad[1], ad[2], ad[3], ad[4]);
+							break;
+						case 6:
+							bonzo = (t_fun6.eval(m.me_fun)).eval(ai[0], ai[1], ai[2], ai[3], ai[4],
+								ai[5], ad[0], ad[1], ad[2], ad[3], ad[4]);
+							break;
+						default:
+							bonzo = null;
+							break;
+						}
+						if(x == pd_objectmaker)
+							newest = bonzo;
+						return;
+					}
+				}
+			}
+		}
+
+		if(!badarg)
+			c.c_anymethod(x, s, argc, argv);
+		else
+			pd_error(x, "Bad arguments for message '" + s.s_name + "' to object '" + c.c_name.s_name + "'");
+	}
+
+	public static void pd_vmess(t_pd x, t_symbol sel, char ... fmt) {
+		t_atom[] arg = new t_atom[10];
+		boolean done = false;
+
+		int i;
+		for(i=0; i<fmt.length; i++) {
+			if( i >= 10 ) {
+				pd_error(x, "pd_vmess: only 10 allowed");
+				break;
+			}
+
+			switch(fmt[i]) {
+			case 'f':
+				arg[i] = new t_atom();
+				SETFLOAT(arg[i], (float)fmt[i]);
+				break;
+			case 's':
+				arg[i] = new t_atom();
+				SETSYMBOL(arg[i], (t_symbol)fmt[i]);
+				break;
+			case 'i':
+				arg[i] = new t_atom();
+				SETFLOAT(arg[i], (t_int)fmt[i]);
+				break;
+			case 'p':
+				arg[i] = new t_atom();
+				SETPOINTER(arg[i], (t_gpointer)fmt[i]);
+				break;
+			default:
+				done = true;
+				break;
+			}
+
+			if( done )
+				break;
+		}
+		typedmess(x, sel, i, arg);
+	}
+
+	public static void pd_forwardmess(t_pd x, int argc, t_atom[] argv) {
+		if(argc != 0) {
+			t_atomtype t = argv[0].a_type;
+			if(t == A_SYMBOL)
+				pd_typedmess(x, argv[0].a_w.w_symbol, argc-1, Arrays.copyOfRange(argv, 1, argv.length));
+			else if(t == A_POINTER) {
+				if(argc == 1)
+					pd_pointer(x, argv[0].a_w.w_gpointer);
+				else
+					pd_list(x, s_list, argc, argv);
+			} else if(t == A_FLOAT) {
+				if(argc == 1)
+					pd_float(x, argv[0].a_w.w_float);
+				else
+					pd_list(x, s_list, argc, argv);
+			} else
+				bug("pd_forwardmess");
+		}
+	}
+
+	class nullfn implements Function0<void> {
+		public void eval() {
+		}
+	}
+
+	public static t_gotfn getfn(t_pd x, t_symbol s) {
+		for(int i = x.c_methods.length - 1; i >= 0; i--)
+			if(x.c_methods[i].me_name == s)
+				return x.c_methods[i].me_fun;
+		pd_error(x, x.c_name.s_name + ": no method for message '" + s.s_name + "'");
+		return new nullfn();
+	}
+
+	public static t_gotfn zgetfn(t_pd x, t_symbol s) {
+		for(int i = x.c_methods.length - 1; i >= 0; i--)
+			if(x.c_methods[i].me_name == s)
+				return x.c_methods[i].me_name;
+		return null;
 	}
 
 	// m_pd.c:226
